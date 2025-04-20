@@ -2,7 +2,7 @@
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 
-#include "max17048G.h"
+#include "max17048g.h"
 
 #define I2C_TIMEOUT -1 // ms
 #define UV_PER_LSB 0.000078125
