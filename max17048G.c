@@ -439,13 +439,10 @@ bool max17048g_isChange(bool clear)
 		clearStatusRegBits(MAX1704x_STATUS_SC << 8);
 	return (flag);
 }
-void max17048g_init_i2c(i2c_master_dev_handle_t dev_handle)
+void max17048g_init(i2c_master_dev_handle_t dev_handle)
 {
 	dev_handle_MAX17048G = dev_handle;
-}
 
-void max17048g_init()
-{
 	max17048g_quickStart();
 	max17048g_isReset(true);
 	max17048g_setResetVoltage(3.0);
@@ -453,6 +450,9 @@ void max17048g_init()
 	max17048g_setCompensation(0x971C);
 	max17048g_enableComparator();
 	max17048g_enableSOCAlert();
+}
+
+
 
 	// printf("MAX17048G init, version %X\n", max17048g_getVersion());
 	// printf("    Voltage: %.2fV\n", max17048g_getVoltage());
@@ -473,4 +473,3 @@ void max17048g_init()
 	// uint8_t status = max17048g_getStatus();
 	// printf("    Status: Device Reset %d, V High %d, V Low %d, V Reset %d, SOC Low %d, SOC 1%% %d\n",
 	// 	status & 0x01, status & 0x02, status & 0x04, status & 0x08, status & 0x10, status & 0x20);
-}
