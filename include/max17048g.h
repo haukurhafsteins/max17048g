@@ -13,7 +13,6 @@ enum gaugeType
 
 
 void max17048g_init(i2c_master_dev_handle_t dev_handle);
-void max17048g_init();
 float max17048g_getSOC();
 float max17048g_getVoltage();
 uint8_t max17048g_getStatus();
