@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "esp_system.h"
 
 #include "max17048g.h"
 
@@ -109,10 +110,11 @@ static int32_t i2c_read(uint8_t reg, uint8_t* bufp, uint16_t len)
 	}
 	return 0;
 }
+static bool last_read_ok = true;
 static uint16_t read16(uint8_t reg)
 {
 	uint8_t data[2] = { 0,0 };
-	i2c_read(reg, data, 2);
+	last_read_ok = (i2c_read(reg, data, 2) == 0);
 	return data[0] << 8 | data[1];
 }
 
@@ -148,7 +150,7 @@ static uint8_t setVALRTMax(uint8_t threshold)
 	uint16_t valrt = read16(MAX17048_CVALRT);
 	valrt &= 0xFF00; // Mask off max bits
 	valrt |= (uint16_t)threshold;
-	return write16(valrt, MAX17048_CVALRT);
+	return write16(MAX17048_CVALRT, valrt);
 }
 
 // It forces the MAX1704X to restart fuel-gauge calculations
@@ -190,6 +192,8 @@ float max17048g_getVoltage()
 float max17048g_getSOC()
 {
 	float p = read16(MAX17043_SOC) * PERCENT_PER_LSB;
+	if (!last_read_ok)
+		return -1.0f; /* bus error: don't report a phantom 0% */
 	if (p > 100.0)
 		p = 100.0;	
 	return p;
@@ -309,7 +313,7 @@ static uint8_t setVALRTMin(uint8_t threshold)
 	uint16_t valrt = read16(MAX17048_CVALRT);
 	valrt &= 0x00FF; // Mask off min bits
 	valrt |= ((uint16_t)threshold) << 8;
-	return write16(valrt, MAX17048_CVALRT);
+	return write16(MAX17048_CVALRT, valrt);
 }
 
 uint8_t max17048g_setVALRTMin(float threshold)
@@ -345,7 +349,7 @@ uint8_t max17048g_setCompensation(uint8_t newCompensation)
 	uint16_t configReg = read16(MAX17043_CONFIG);
 	configReg &= 0x00FF; // Mask out compensation bits
 	configReg |= ((uint16_t)newCompensation) << 8;
-	return write16(configReg, MAX17043_CONFIG);
+	return write16(MAX17043_CONFIG, configReg);
 }
 
 uint8_t max17048g_setResetVoltage(float threshold)
@@ -370,7 +374,7 @@ uint8_t max17048g_enableComparator(void)
 uint8_t max17048g_sleep()
 {
 	// On the MAX17048, we also have to set the EnSleep bit in the MODE register
-	uint8_t result = write16(MAX17048_MODE_ENSLEEP, MAX17043_MODE);
+	uint8_t result = write16(MAX17043_MODE, MAX17048_MODE_ENSLEEP);
 	if (result)
 		return (result); // Write failed. Bail.
 
@@ -381,7 +385,7 @@ uint8_t max17048g_sleep()
 
 	configReg |= MAX17043_CONFIG_SLEEP; // Set sleep bit
 
-	return write16(configReg, MAX17043_CONFIG);
+	return write16(MAX17043_CONFIG, configReg);
 }
 
 uint8_t max17048g_disableComparator(void)
@@ -443,11 +447,20 @@ void max17048g_init(i2c_master_dev_handle_t dev_handle)
 {
 	dev_handle_MAX17048G = dev_handle;
 
-	max17048g_quickStart();
+	/* Quick-start re-seeds SOC from the instantaneous cell voltage and
+	 * discards the gauge's learned state. Issue it only on a true power-up:
+	 * on warm reboots (rename path, panics, OTA) the gauge's running estimate
+	 * is strictly better, and re-anchoring while charging or under load
+	 * inflates/depresses the reported SOC. */
+	if (esp_reset_reason() == ESP_RST_POWERON)
+		max17048g_quickStart();
 	max17048g_isReset(true);
 	max17048g_setResetVoltage(3.0);
 	max17048g_setThreshold(10);
-	max17048g_setCompensation(0x971C);
+	/* RCOMP byte only (was 0x971C — the uint8_t parameter silently truncated
+	 * it to 0x1C, and the swapped write16 args meant RCOMP was never actually
+	 * programmed; 0x97 is the datasheet default compensation). */
+	max17048g_setCompensation(0x97);
 	max17048g_enableComparator();
 	max17048g_enableSOCAlert();
 }
